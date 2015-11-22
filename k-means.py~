@@ -1,0 +1,3 @@
+import random
+def kcluster(rows,distance=pearson,k=4):
+ 	ranges=[(min([row[i] for row in rows]),max([row[i] for row[i] in rows]))for i in len(rows[0])]
