@@ -1,0 +1,27 @@
+
+#coding=utf-8
+
+import re
+def readfile(filename):
+	lines=[line for line in file(filename)]
+	
+	out2=open("shuchu2.txt","w")
+	for i in range(len(lines)):
+		b = re.search("[0-9]+",lines[i])
+		#out.write(lines[i])
+		#out.write('\n')
+		#b += '\n'
+		if b == None:continue
+		#else:print b.group(0),len(b.group(0)),len(lines[i])
+		if b.group(0) == lines[i][0:len(lines[i])-1]:
+			if lines[i+1][0] == 't':
+				if '，' in lines[i+1] or '。' in lines[i+1] or '？' in lines[i+1] or '！' in lines[i+1] or ',' in lines[i+1] or '?' in lines[i+1] or '!' in lines[i+1] or '.' in lines[i+1]:
+					print lines[i+1]
+			#m=raw_input(">")
+			#if m == 'y':
+			#	out.write("title:")
+			#out.write('\n')
+
+				
+
+		

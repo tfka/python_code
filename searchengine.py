@@ -1,24 +1,56 @@
 import urllib2
+import re
+from sqlite3 import dbapi2 as sqlite
 from bs4 import*
 from urlparse import urljoin
 class crawler:
 	def __init__(self,dbname):
-		pass
+		self.con=sqlite.connect(dbname)
 	def __del__(self):
-		pass
+		self.con.close()
 	def dbcommit(self):
-		pass
+		self.con.commit()
 	def getentryid(self,table,field,value,createnew=True):
+		cur=self.con.execute("select rowid from %s where %s = '%s'" % (table,field,value))
+		res=cur.fetchone()
+		if res == None:
+			cur=self.con.execute("insert into %s (%s) values ('%s')" % (table,field,value))
+			return cur.lastrowid
+		else:
+			return res[0]
 		return None
 	
 	def addtoindex(self,url,soup):
+		if self.isindexed(url): return
 		print 'Indexing %s' % url
-	
+		text=self.gettextonly(soup)
+		words=self.separatewords(text)
+		urlid=self.getentryid('urllist','url',url)
+		for i in range(len(words)):
+			word=words[i]
+			if word in ignorewords:continue
+			wordid=self.getentryid('wordlist','word',word)
+			self.con.execute("insert into wordlocation(urlid,wordid,location) values (%d,%d,%d)" % (urlid,wordid,i))
 	def gettextonly(self,soup):
-		return None
+		v=soup.string
+		if v==None:
+			c=soup.contents
+			resulttext=''
+			for t in c:
+				subtext=self.gettextonly(t)
+				resulttext += subtext+'\n'
+			return resulttext
+		return v.strip()
 	def separatewords(self,text):
+		splitter=re.compile('\\W*')
+		return [s.lower() for s in splitter.split(text) if s!= ''] 
 		return None
 	def isindexed(self,url):
+		u=self.con.execute("select rowid from urllist where url = '%s'" % url).fetchone()
+		if u!=None:
+			v=self.con.execute("select * from wordlocation where urlid=%d" %u[0]).fetchone();
+			if v!=None: return True
+		return False
 		return False
 	def addlinkref(self,urlFrom,urlTo,linkText):
 		pass
@@ -50,6 +82,16 @@ class crawler:
 			
 			pages=newpages
 	def createindextables(self):
-		pass
+		self.con.execute('create table urllist(url)')
+		self.con.execute('create table wordlist(word)')
+		self.con.execute('create table wordlocation(urlid,wordid,location)')
+		self.con.execute('create table link(fromid integer,toid integer)')
+		self.con.execute('create table linkwords(wordid,linkid)')
+		self.con.execute('create index wordidx on wordlist(word)')
+		self.con.execute('create index urlidx on urllist(url)')
+		self.con.execute('create index wordurlidx on wordlocation(wordid)')
+		self.con.execute('create index urltoidx on link(toid)')
+		self.con.execute('create index urlfromid on link(fromid)')
+		self.dbcommit()
 ignorewords=set(['the','of','to','and','a','in','is','it'])
 		
