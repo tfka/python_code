@@ -52,9 +52,18 @@ class crawler:
 			v=self.con.execute("select * from wordlocation where urlid=%d" %u[0]).fetchone();
 			if v!=None: return True
 		return False
-		return False
 	def addlinkref(self,urlFrom,urlTo,linkText):
-		pass
+		words=self.separatewords(linkText)
+		fromid=self.getentryid('urllist','url',urlFrom)
+		toid=self.getentryid('urllist','url',urlTo)
+		if fromid == toid: return
+		#print 'insert into link(fromid,toid) values(%d,%d)'%(fromid,toid)
+		cur=self.con.execute('insert into link(fromid,toid) values(%d,%d)'%(fromid,toid))
+		linkid=cur.lastrowid
+		for word in words:
+			if word in ignorewords:continue
+			wordid=self.getentryid('wordlist','word',word)
+			self.con.execute('insert into linkwords(linkid,wordid) values(%d,%d)' %(linkid,wordid))
 	def crawl(self,pages,depth=2):
 		for i in range(depth):
 			newpages=set()
@@ -77,6 +86,8 @@ class crawler:
 						url=url.split('#')[0]
 						if url[0:4]=='http' and not self.isindexed(url):
 							newpages.add(url)
+						toid=self.con.execute('')
+						
 						linkText=self.gettextonly(link)
 						self.addlinkref(page,url,linkText)
 				self.dbcommit()
@@ -94,6 +105,22 @@ class crawler:
 		self.con.execute('create index urltoidx on link(toid)')
 		self.con.execute('create index urlfromid on link(fromid)')
 		self.dbcommit()
+	def calculatepagerank(self,iterations=20):
+		self.con.execute('drop table if exists pagerank')
+		self.con.execute('create table pagerank(urlid primary key,score)')
+		self.con.execute('insert into pagerank select rowid,1.0 from urllist')
+		self.dbcommit()
+		for i in range(iterations):
+			print i
+			for (urlid,) in self.con.execute('select rowid from urllist'):
+				pr=0.15
+				for (linker,) in self.con.execute('select distinct fromid from link where toid = %d' %urlid):
+					linkingpr=self.con.execute('select score from pagerank where urlid=%d' % linker).fetchone()[0]
+					#print 'select count(*) from link where fromid=%d'% linker
+					linkingcount=self.con.execute('select count(*) from link where fromid=%d'% linker).fetchone()[0]
+					pr+=0.85*(linkingpr/linkingcount)
+				self.con.execute('update pagerank set score=%f where urlid=%d'%(pr,urlid))
+			self.dbcommit()
 class searcher:
 	def __init__(self,dbname):
 		self.con=sqlite.connect(dbname)
@@ -125,10 +152,10 @@ class searcher:
 		cur=self.con.execute(fullquery)
 		rows=[row for row in cur]
 		return rows,wordids
-	def getscoredlist(self,rows,wordid):
+	def getscoredlist(self,rows,wordids):
 		totalscores=dict([(row[0],0) for row in rows])
 		
-		weights=[(1.0,self.frequencyscore(rows)),(1.5,self.locationscore(rows)),(1.0,self.distancescore(rows))]
+		weights=[(1.0,self.frequencyscore(rows)),(1.0,self.locationscore(rows)),(1.0,self.distancescore(rows)),(1.0,self.pagerankscore(rows)),(1.0,self.linktextscore(rows,wordids))]
 		for (weight,scores) in weights:
 			for url in totalscores:
 				totalscores[url]+=weight*scores[url]
@@ -168,7 +195,24 @@ class searcher:
 			dist=sum([abs(row[i]-row[i-1]) for i in range(2,len(row))])
 			if dist < mindistance[row[0]]: mindistance[row[0]]=dist
 		return self.normalizescores(mindistance,smallIsBetter=1)
-
+	def inboundlinkscore(self,rows):
+		uniqueurls=set([row[0] for row in rows])
+		inboundcount=dict([(u,self.con.execute("select count(*) from link where toid=%d" % u)) for u in uniqueurls])
+		return self.normalizescores(inboundcount)
+	def pagerankscore(self,rows):
+		pageranks=dict([(row[0],self.con.execute('select score from pagerank where urlid=%d'% row[0]).fetchone()[0]) for row in rows])
+		maxrank=max(pageranks.values())
+		normalizedscores=dict([(u,float(l)/maxrank) for (u,l) in pageranks.items()])
+		return normalizedscores
+	def linktextscore(self,rows,wordids):
+		linkscores=dict([(row[0],0) for row in rows])
+		for wordid in wordids:
+			cur=self.con.execute('select link.fromid,link.toid from linkwords,link where wordid=%d and linkwords.linkid=link.rowid' % wordid)
+			for (fromid,toid) in cur:
+				if toid in linkscores:
+					pr=self.con.execute('select score from pagerank where urlid=%d' % fromid).fetchone()[0]
+					linkscores[toid]+=pr
+		return self.normalizescores(linkscores)
 		
 ignorewords=set(['the','of','to','and','a','in','is','it'])
 		
