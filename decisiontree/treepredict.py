@@ -113,7 +113,7 @@ def prune(tree,mingain):
         if delta < mingain:
             tree.tb,tree.fb=None,None
             tree.results=uniquecounts(tb+fb)
-
+#对于数据缺失的处理，通过现在有的数据来进行加权估计
 def mdclassify(observation,tree):
     if tree.results!=None:
         return tree.results
@@ -139,3 +139,12 @@ def mdclassify(observation,tree):
                 if v==tree.value:branch=tree.tb
                 else branch=tree.fb
             return mdclassify(observation,branch)
+#对于数值类型的决策树，如果我们还是使用基尼或者熵来做评价的话，我们相当于把各个数字都看做了不同的离散值，那么久没有顾及到那些相差很小的数字
+#所以我们在考虑数值型决策树的时候，我们可以考虑用方差。
+def variance(rows):
+    if len(rows)=0:return 0
+    data=[float(row[len(row)-1]) for row in rows]
+    menu=sum(data)/len(data)
+    variance=sum([(d-mean)**2 for d in data])/len(data)
+    return variance
+
